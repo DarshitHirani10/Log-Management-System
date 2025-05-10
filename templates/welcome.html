@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+
+{% block title %}Welcome{% endblock %}
+
+{% block content %} 
+<div class="container mt-5">
+    <div class="text-center">
+        <h1 class="display-4">Welcome to <strong>LogTracker</strong>!</h1>
+        {% if session.username %}
+            <p class="lead mt-3">Hello, <strong>{{ session.username }}</strong>! You are logged in.</p>
+            <div class="mt-4">
+                <a href="{{ url_for('addlog') }}" class="btn btn-primary me-2">Add a Log</a>
+                <a href="{{ url_for('viewlog') }}" class="btn btn-outline-secondary me-2">View Logs</a>
+                <a href="{{ url_for('logout') }}" class="btn btn-danger">Logout</a>
+            </div>
+        {% else %}
+            <p class="lead mt-3">This is a simple web application to track your logs. You can add, view, and manage your logs easily.</p>
+            <p class="lead">Please log in or register to get started.</p>
+            <div class="mt-4">
+                <a href="{{ url_for('login') }}" class="btn btn-primary me-2">Login</a>
+                <a href="{{ url_for('register') }}" class="btn btn-outline-secondary">Register</a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

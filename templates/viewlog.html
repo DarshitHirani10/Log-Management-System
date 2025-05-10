@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+
+{% block title %}View Logs{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">{{ username }}'s Logs ({{ count }})</h2>
+{% if log %}
+    <table class="table table-bordered table-striped">
+        <thead class="table-dark">
+            <tr>
+                <th>Date</th>
+                <th>Time In</th>
+                <th>Time Out</th>
+                <th>Task</th>
+                <th>Description</th>
+                <th>Hours</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for entry in log %}
+                <tr>
+                    <td>{{ entry.date }}</td>
+                    <td>{{ entry.timein }}</td>
+                    <td>{{ entry.timeout }}</td>
+                    <td>{{ entry.task }}</td>
+                    <td>{{ entry.description }}</td>
+                    <td>{{ entry.hours }}</td>
+                    <td>
+                        <a href="{{ url_for('updatelog', id=entry.id) }}" class="btn btn-sm btn-warning">Edit</a>
+                        <a href="{{ url_for('deletelog', id=entry.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure?');">Delete</a>
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% else %}
+    <p class="text-muted">No logs found.</p>
+{% endif %}
+<a href="{{ url_for('addlog') }}" class="btn btn-primary">Add New Log</a>
+<a href="{{ url_for('welcome') }}" class="btn btn-link">Back to Home</a>
+
+{% endblock %}

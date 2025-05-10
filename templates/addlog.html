@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+ 
+{% block title %}{{ 'Update' if l else 'Add' }} Log{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">{{ 'Update' if l else 'Add' }} Log Entry</h2>
+{% if msg %}
+    <div class="alert alert-info">{{ msg }}</div>
+{% endif %}
+<form method="POST">
+    <div class="mb-3">
+        <label class="form-label">Date</label>
+        <input type="date" name="date" class="form-control" value="{{ l.date if l else '' }}" required>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Time In</label>
+        <input type="time" name="timein" class="form-control" value="{{ l.timein if l else '' }}" required>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Time Out</label>
+        <input type="time" name="timeout" class="form-control" value="{{ l.timeout if l else '' }}" required>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Task</label>
+        <input type="text" name="task" class="form-control" value="{{ l.task if l else '' }}" required>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Description</label>
+        <textarea name="description" class="form-control">{{ l.description if l else '' }}</textarea>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Hours</label>
+        <input type="number" step="0.1" name="hours" class="form-control" value="{{ l.hours if l else '' }}" required>
+    </div>
+    <button type="submit" class="btn btn-primary">{{ 'Update' if l else 'Add' }} Log</button>
+    <a href="{{ url_for('viewlog') }}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}
