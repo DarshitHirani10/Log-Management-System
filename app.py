@@ -4,6 +4,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 import os
 from dotenv import load_dotenv
+from flask_mail import Mail, Message
+import random
 # from flask_login import LoginManager
 
 
@@ -14,8 +16,15 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 load_dotenv()
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY")
-# print(app.config["SECRET_KEY"])
- 
+app.config["MAIL_SERVER"] = os.environ.get("MAIL_SERVER")
+app.config["MAIL_PORT"] = os.environ.get("MAIL_PORT")
+app.config["MAIL_USERNAME"] = os.environ.get("MAIL_USERNAME")
+app.config["MAIL_PASSWORD"] = os.environ.get("MAIL_PASSWORD")
+app.config["MAIL_USE_TLS"] = os.environ.get("MAIL_USE_TLS")
+
+# Initialize Flask-Mail
+mail = Mail(app)
+
 # # Initialize database and login manager
 db = SQLAlchemy(app)
 # login_manager = LoginManager() 
@@ -63,7 +72,7 @@ def welcome():
 
 
 # # Register route
-@app.route('/register', methods=['POST', 'GET'])
+@app.route('/register', methods=['GET', 'POST'])
 def register():
     msg = ''
     if request.method == 'POST':
@@ -71,55 +80,174 @@ def register():
         email = request.form['email']
         password = request.form['password']
 
-        # Check if username or email already exists
-        user = Detail.query.filter_by(username=username).first()
-        email_exists = Detail.query.filter_by(email=email).first()
+        # Check if username or email is already used
+        if Detail.query.filter_by(username=username).first():
+            msg = 'Username already exists.'
+            return render_template('register.html', msg=msg)
+        if Detail.query.filter_by(email=email).first():
+            msg = 'Email already exists.'
+            return render_template('register.html', msg=msg)
 
-        if user:
-            msg = 'Username already exists. Please choose a different username.'
+        # Generate a random 6-digit OTP
+        otp = str(random.randint(100000, 999999))
+
+        # Store temp user data and OTP in session
+        session['temp_user'] = {'username': username, 'email': email, 'password': password}
+        session['otp'] = otp
+
+        # Send the OTP email
+        try:
+            otp_msg = Message(
+                subject='OTP Verification - LogTracker',
+                sender=app.config['MAIL_USERNAME'],
+                recipients=[email],
+                body=f"Hi {username},\n\nYour OTP for registration is: {otp}\n\nPlease enter this to complete registration."
+            )
+            mail.send(otp_msg)
+            return redirect(url_for('verify_otp'))
+        except Exception as e:
+            msg = 'Failed to send OTP. Please try again later.'
+            print("Email error:", e)
             return render_template('register.html', msg=msg)
-        elif email_exists:
-            msg = 'Email already exists. Please use a different email.'
-            return render_template('register.html', msg=msg)
-        else:
-            # Create a new user
-            hashed_password = generate_password_hash(password)
-            new_user = Detail(username=username, email=email, password=hashed_password)
-            db.session.add(new_user)
-            db.session.commit()
-            msg = 'Registration successful. Please log in.'
-            return render_template('welcome.html', username=username, msg=msg)
+
     return render_template('register.html', msg=msg)
 
-# # Login route
-@app.route('/login',methods=['POST','GET'])
-def login():
-    msg=''
-    if 'username' in session:
-        msg='you are already logged in'
-        return render_template('welcome.html',username=session['username'],msg=msg)
-    else:
-        if request.method == 'POST':
-            user=Detail.query.filter_by(username=request.form['username']).first()
-            if user:
-                try:
-                    if check_password_hash (user.password, request.form['password']):
-                        msg=' login successful'
-                        session['username']=user.username
-                        return render_template('welcome.html',username=user.username,msg=msg)
-                    else:
-                        msg='Wrong password!'
-                        return render_template('login.html',msg=msg)
-                except Exception as e:
-                    msg='Wrong password!'
-                    return render_template('login.html',msg=msg)
-                    
-            else:
-                msg='User doesn\'t exits!'
-            return render_template('login.html',msg=msg)
+# # OTP verification route
+@app.route('/verify_otp', methods=['GET', 'POST'])
+def verify_otp():
+    msg = ''
+    temp_user = session.get('temp_user')
+
+    # No temp user in session? Redirect to register
+    if not temp_user:
+        return redirect(url_for('register'))
+
+    if request.method == 'POST':
+        entered_otp = request.form.get('otp')
+        actual_otp = session.get('otp')
+
+        if entered_otp == actual_otp:
+            # Create and save the user
+            hashed_password = generate_password_hash(temp_user['password'])
+            new_user = Detail(
+                username=temp_user['username'],
+                email=temp_user['email'],
+                password=hashed_password
+            )
+            db.session.add(new_user)
+            db.session.commit()
+
+            # Clear session
+            session.pop('temp_user', None)
+            session.pop('otp', None)
+
+            msg = 'Registration successful. Please log in.'
+            return render_template('welcome.html', msg=msg, username=temp_user['username'])
         else:
-            return render_template('login.html',msg=msg)
-        
+            msg = 'Invalid OTP. Please try again.'
+
+    return render_template('verify_otp.html', msg=msg)
+
+# # Forgot password route
+@app.route('/forgot_password', methods=['GET', 'POST'])
+def forgot_password():
+    msg = ''
+    if request.method == 'POST':
+        email = request.form['email']
+        user = Detail.query.filter_by(email=email).first()
+        if user:
+            otp = str(random.randint(100000, 999999))
+            session['reset_email'] = email
+            session['reset_otp'] = otp
+            try:
+                msg_body = f"Hi {user.username},\n\nYour OTP for password reset is: {otp}"
+                otp_msg = Message('Password Reset OTP - LogTracker',
+                                  sender=app.config['MAIL_USERNAME'],
+                                  recipients=[email],
+                                  body=msg_body)
+                mail.send(otp_msg)
+                return redirect(url_for('verify_reset_otp'))
+            except Exception as e:
+                print("Email error:", e)
+                msg = 'Failed to send OTP. Try again later.'
+        else:
+            msg = 'Email not registered.'
+
+    return render_template('forgot_password.html', msg=msg)
+
+# # OTP verification for password reset
+@app.route('/verify_reset_otp', methods=['GET', 'POST'])
+def verify_reset_otp():
+    msg = ''
+    if not session.get('reset_email'):
+        return redirect(url_for('forgot_password'))
+
+    if request.method == 'POST':
+        entered_otp = request.form.get('otp')
+        actual_otp = session.get('reset_otp')
+        if entered_otp == actual_otp:
+            return redirect(url_for('reset_password'))
+        else:
+            msg = 'Invalid OTP. Try again.'
+    
+    return render_template('verify_reset_otp.html', msg=msg)
+
+# # Reset password route
+@app.route('/reset_password', methods=['GET', 'POST'])
+def reset_password():
+    msg = ''
+    email = session.get('reset_email')
+    if not email:
+        return redirect(url_for('forgot_password'))
+
+    if request.method == 'POST':
+        password = request.form['password']
+        confirm = request.form['confirm']
+
+        if password != confirm:
+            msg = 'Passwords do not match.'
+            return render_template('reset_password.html', msg=msg)
+
+        user = Detail.query.filter_by(email=email).first()
+        if user:
+            user.password = generate_password_hash(password)
+            db.session.commit()
+
+            # Clean up session
+            session.pop('reset_email', None)
+            session.pop('reset_otp', None)
+
+            msg = 'Password reset successful. Please log in.'
+            return render_template('login.html', msg=msg)
+        else:
+            msg = 'User not found.'
+    
+    return render_template('reset_password.html', msg=msg)
+
+
+# login route
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    msg = ''
+    
+    # Check if a user is already logged in
+    if 'username' in session:
+        return render_template('welcome.html', msg=msg, username=session['username'])
+
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+
+        user = Detail.query.filter_by(username=username).first()
+        if user and check_password_hash(user.password, password):
+            session['username'] = username
+            msg = 'Login successful.'
+            return render_template('welcome.html', msg=msg, username=username)
+        else:
+            msg = 'Invalid username or password.'
+            return render_template('login.html', msg=msg)
+    
+    return render_template('login.html', msg=msg)
 
 # # Logout route
 @app.route("/logout")

@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+
+{% block title %}Verify OTP{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-center align-items-center mt-5">
+    <div class="card shadow-lg" style="width: 25rem;">
+        <div class="card-body">
+            <h4 class="card-title text-center mb-4">OTP Verification</h4>
+            {% if msg %}
+                <div class="alert alert-danger text-center">{{ msg }}</div>
+            {% endif %}
+            <form method="POST">
+                <div class="mb-3">
+                    <label for="otp" class="form-label">Enter OTP</label>
+                    <input type="text" name="otp" id="otp" class="form-control" placeholder="6-digit OTP" required>
+                </div>
+                <div class="d-grid">
+                    <button type="submit" class="btn btn-success">Verify</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
