@@ -148,6 +148,7 @@ def verify_otp():
 
     return render_template('verify_otp.html', msg=msg)
 
+
 # # Forgot password route
 @app.route('/forgot_password', methods=['GET', 'POST'])
 def forgot_password():
@@ -161,7 +162,7 @@ def forgot_password():
             session['reset_otp'] = otp
             try:
                 msg_body = f"Hi {user.username},\n\nYour OTP for password reset is: {otp}"
-                otp_msg = Message('Password Reset OTP - LogTracker',
+                otp_msg = Message(subject='Password Reset OTP - LogTracker',
                                   sender=app.config['MAIL_USERNAME'],
                                   recipients=[email],
                                   body=msg_body)
@@ -191,6 +192,7 @@ def verify_reset_otp():
             msg = 'Invalid OTP. Try again.'
     
     return render_template('verify_reset_otp.html', msg=msg)
+
 
 # # Reset password route
 @app.route('/reset_password', methods=['GET', 'POST'])
@@ -270,32 +272,65 @@ def addlog():
             return redirect(url_for('login'))
 
         if request.method == 'POST':
-            log = Log.query.filter_by(date=request.form['date'], user_id=user.id).first()
+            try:
+                # Parse and validate the date input
+                log_date = datetime.strptime(request.form['date'], '%Y-%m-%d').date()
+                current_date = datetime.now().date()
+
+                # Check if the date is in the future
+                if log_date > current_date:
+                    msg = 'The date cannot be in the future. Please enter a valid date.'
+                    return render_template('addlog.html', msg=msg, username=user.username)
+
+            except ValueError:
+                # Handle invalid date formats or non-existent dates (e.g., 31-02-2025)
+                msg = 'Invalid date. Please enter a valid date in the format YYYY-MM-DD.'
+                return render_template('addlog.html', msg=msg, username=user.username)
+
+            # Check if a log for the given date already exists
+            log = Log.query.filter_by(date=log_date, user_id=user.id).first()
             if log:
                 msg = 'A log for this date already exists. Please choose a different date.'
                 return render_template('addlog.html', msg=msg, username=user.username)
-            else:
-                # Parse date and time inputs correctly
-                log_date = datetime.strptime(request.form['date'], '%Y-%m-%d').date()
+
+            # Parse and validate time inputs
+            try:
                 log_timein = datetime.strptime(request.form['timein'], '%H:%M').time()
                 log_timeout = datetime.strptime(request.form['timeout'], '%H:%M').time()
 
-                new_log = Log(
-                    date=log_date,
-                    timein=log_timein,
-                    timeout=log_timeout,
-                    task=request.form['task'],
-                    description=request.form['description'],
-                    hours=float(request.form['hours']),
-                    user_id=user.id
-                )
-                db.session.add(new_log)
-                db.session.commit()
-                msg = 'Log added successfully.'
-                return redirect(url_for('viewlog'))
+                # Ensure timeout is later than timein
+                if log_timeout <= log_timein:
+                    msg = 'Timeout must be later than Timein. Please enter valid times.'
+                    return render_template('addlog.html', msg=msg, username=user.username)
+
+                # Calculate hours worked
+                timein_datetime = datetime.combine(log_date, log_timein)
+                timeout_datetime = datetime.combine(log_date, log_timeout)
+                hours_worked = (timeout_datetime - timein_datetime).total_seconds() / 3600  # Convert seconds to hours
+
+            except ValueError:
+                msg = 'Invalid time format. Please enter time in HH:MM format.'
+                return render_template('addlog.html', msg=msg, username=user.username)
+
+            # Create and save the new log
+            new_log = Log(
+                date=log_date,
+                timein=log_timein,
+                timeout=log_timeout,
+                task=request.form['task'],
+                description=request.form['description'],
+                hours=hours_worked,  # Automatically calculated hours
+                user_id=user.id
+            )
+            db.session.add(new_log)
+            db.session.commit()
+            msg = 'Log added successfully.'
+            return redirect(url_for('viewlog'))
+
         return render_template('addlog.html', username=user.username, msg=msg)
     else:
         return redirect(url_for('login'))
+    
  
 @app.route('/viewlog', methods=['GET'])
 def viewlog():
@@ -311,31 +346,85 @@ def viewlog():
         return redirect(url_for('login'))
     
 
-@app.route('/updatelog/<int:id>',methods=['GET','POST'])
+@app.route('/updatelog/<int:id>', methods=['GET', 'POST'])
 def updatelog(id):
     msg = ''
-    log=Log.query.filter_by(id=id).first()
-    user=Detail.query.filter_by(id=log.user_id).first()
+    
+    # Check if the user is logged in
+    if 'username' not in session:
+        return redirect(url_for('login'))
+
+    # Get the currently logged-in user
+    user = Detail.query.filter_by(username=session['username']).first()
+    if not user:
+        return redirect(url_for('login'))
+
+    # Fetch the log by ID
+    log = Log.query.filter_by(id=id).first()
+
+    # Check if the log exists and belongs to the logged-in user
+    if not log or log.user_id != user.id:
+        msg = 'You are not authorized to access this log.'
+        return render_template('error.html', msg=msg)  # Render an error page or redirect
+
     if request.method == 'POST':
-        log.date=datetime.strptime(request.form['date'],'%Y-%m-%d').date()
-
         try:
-            log.timein=datetime.strptime(request.form['timein'],'%H:%M:%S').time()
-        except ValueError:
-            log.timein=datetime.strptime(request.form['timein'],'%H:%M').time()
-        try:
-            log.timeout=datetime.strptime(request.form['timeout'],'%H:%M:%S').time()
-        except ValueError:
-            log.timeout=datetime.strptime(request.form['timeout'],'%H:%M').time()
+            # Parse and validate the date input
+            log_date = datetime.strptime(request.form['date'], '%Y-%m-%d').date()
+            current_date = datetime.now().date()
 
-        log.task=request.form['task']
-        log.description=request.form['description']
-        log.hours=float(request.form['hours'])
-        log.user_id=log.user_id
+            # Check if the date is in the future
+            if log_date > current_date:
+                msg = 'The date cannot be in the future. Please enter a valid date.'
+                return render_template('addlog.html', l=log, username=user.username, msg=msg)
+
+            log.date = log_date
+
+        except ValueError:
+            msg = 'Invalid date. Please enter a valid date in the format YYYY-MM-DD.'
+            return render_template('addlog.html', l=log, username=user.username, msg=msg)
+
+        # Parse and validate time inputs
+        try:
+            timein_input = request.form.get('timein', '').strip()
+            timeout_input = request.form.get('timeout', '').strip()
+
+            if not timein_input or not timeout_input:
+                msg = 'Timein and Timeout fields cannot be empty.'
+                return render_template('addlog.html', l=log, username=user.username, msg=msg)
+
+            log_timein = datetime.strptime(timein_input, '%H:%M').time()
+            log_timeout = datetime.strptime(timeout_input, '%H:%M').time()
+
+            # Ensure timeout is later than timein
+            if log_timeout <= log_timein:
+                msg = 'Timeout must be later than Timein. Please enter valid times.'
+                return render_template('addlog.html', l=log, username=user.username, msg=msg)
+
+            # Calculate hours worked
+            timein_datetime = datetime.combine(log.date, log_timein)
+            timeout_datetime = datetime.combine(log.date, log_timeout)
+            hours_worked = (timeout_datetime - timein_datetime).total_seconds() / 3600  # Convert seconds to hours
+
+            log.timein = log_timein
+            log.timeout = log_timeout
+            log.hours = hours_worked  # Automatically calculated hours
+
+        except ValueError:
+            msg = 'Invalid time format. Please enter time in HH:MM format.'
+            return render_template('addlog.html', l=log, username=user.username, msg=msg)
+
+        # Update other fields
+        log.task = request.form['task']
+        log.description = request.form['description']
+
+        # Commit changes to the database
         db.session.commit()
-        msg = 'Log added successfully'
+        msg = 'Log updated successfully.'
         return redirect(url_for('viewlog'))
-    return render_template('addlog.html',l=log,username=user.username,msg=msg)
+
+    return render_template('addlog.html', l=log, username=user.username, msg=msg)
+
 
 @app.route('/deletelog/<int:id>',methods=['GET'])
 def deletelog(id):

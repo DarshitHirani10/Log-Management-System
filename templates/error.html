@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+
+{% block title %}Error{% endblock %}
+
+{% block content %}
+<div class="alert alert-danger">
+    <h4>Error</h4>
+    <p>{{ msg }}</p>
+</div>
+<a href="{{ url_for('viewlog') }}" class="btn btn-primary">Go Back</a>
+{% endblock %}
